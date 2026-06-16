@@ -523,7 +523,7 @@ where $\mathcal{B}$ is a many-to-one mapping (collapsing repeated symbols and bl
 
 **Algorithm**: LSTMs, GRUs, Transformers for sequence generation
 
-$$L = -\sum_{t=1}^T \log p_\theta(y_t | y_{<t}, x)$$
+$$L = -\sum_{t=1}^T \log p_\theta(y_t \mid y_1, \ldots, y_{t-1}, x)$$
 
 **Teacher forcing**: Feed ground-truth tokens during training (not predicted ones).
 
@@ -790,7 +790,9 @@ where $P(k) = \frac{e^{y_k}}{\sum_j e^{y_j}}$ is the top-1 probability.
 
 **ListMLE**:
 
-$$L = -\log P(\pi^* | s) = -\sum_{k=1}^n \log \frac{e^{s_{\pi^*(k)}}}{\sum_{j=k}^n e^{s_{\pi^*(j)}}}$$
+$$L = -\log P(\pi^* \mid s) = -\sum_{k=1}^{n} \log \frac{\exp(s_{\sigma(k)})}{\sum_{j=k}^{n} \exp(s_{\sigma(j)})}$$
+
+where $\sigma$ denotes the ground-truth ranking permutation $\pi^*$.
 
 Directly optimizes the likelihood of the correct permutation.
 
