@@ -20,6 +20,12 @@
 12. [Optimization Methods](#12-optimization-methods)
 13. [Choosing the Right Loss](#13-choosing-the-right-loss)
 14. [Quick Reference Table](#14-quick-reference-table)
+15. [Visual Guide: Neural Networks & Backprop](#v2-forward-pass--loss--backpropagation)
+16. [Visual Guide: Gradient Descent](#v3-gradient-descent--visual-intuition)
+17. [Visual Guide: Normalization](#v4-normalization-techniques--visual-guide)
+18. [Visual Guide: Dropout](#v5-dropout--removing-connections)
+19. [Visual Guide: Optimization Algorithms](#v6-optimization-algorithms--visual--mathematical-deep-dive)
+20. [Full Training Pipeline](#v7-putting-it-all-together--training-pipeline)
 
 ---
 
@@ -1482,3 +1488,764 @@ What type of output?
 ---
 
 *This document covers the theoretical foundations, mathematical forms, gradients, and optimization strategies for loss functions across the full spectrum of machine learning. For any specific algorithm, refer to the corresponding section for the complete treatment.*
+
+---
+
+# Visual Guide: How It All Works
+
+> ASCII diagrams + Mermaid flowcharts illustrating neural networks, backpropagation, gradient descent, normalization, dropout, and optimization algorithms.
+
+---
+
+## V1. Neural Network Architecture & Loss
+
+### V1.1 A Fully Connected Network (Forward Pass)
+
+```
+    INPUT LAYER         HIDDEN LAYER 1      HIDDEN LAYER 2       OUTPUT LAYER
+                        (ReLU)              (ReLU)               (Softmax)
+
+    x₁ ●───────────►  ● h₁¹               ● h₁²          ┌──► ● ŷ₁  ╮
+         ╲   w¹₁₁    ╱│╲                 ╱│╲              │         │
+    x₂ ●──╲────────►╱ │ ╲───────────────╱ │  ────────────►  ● ŷ₂  │ Softmax
+         ╲  w¹₂₁   ╱  │                ╱  │               │         │ → probabilities
+    x₃ ●──╲──────►╱   │ ● h₂¹         ╱  │● h₂²         │  ● ŷ₃  │ (sum = 1)
+            ╲         │  ╲           ╱   │  ╲             └──►      ╯
+    x₄ ●─────╲──────► │   ╲─────────╱    │   ╲──────────►
+               ╲      │● h₃¹            │● h₃²
+    x₅ ●────────╲───► │                  │
+                 ╲────►
+                        │ bias b¹         │ bias b²          bias b³
+                        ▼                  ▼                  ▼
+                   z = Wx + b        z = Wx + b          z = Wx + b
+                   a = ReLU(z)       a = ReLU(z)         ŷ = Softmax(z)
+```
+
+**Each neuron computes:**
+
+```
+                   ┌─────────────────────────────────────────┐
+  inputs           │                                         │
+  x₁, x₂,... ────►│  z = w₁x₁ + w₂x₂ + ... + wₙxₙ + b     │──► activation a = f(z)
+                   │                                         │
+                   └─────────────────────────────────────────┘
+                              Linear combination                  Non-linearity
+```
+
+### V1.2 Activation Functions Compared
+
+```
+    ReLU                Sigmoid              Tanh                 Leaky ReLU
+    f(z) = max(0,z)     f(z) = 1/(1+e⁻ᶻ)   f(z) = tanh(z)      f(z) = max(αz, z)
+
+  ↑                   ↑     ___________    ↑        ____       ↑      /
+  │        /          │    /           │   │  ______/          │     /
+  │       /           │  _/            │   │ /                 │    /
+  │      /            │_/              │   │/                  │   /
+──┼─────/─────►     ──┼────────────►  ─┼──┼──────────►      ──┼──/──────►
+  │    /              │                │  │╲                  │ /╱
+  │   / (zero         │  range (0,1)   │   ╲_____             │╱  slope α
+  │__/  for z<0)      │                │   range(-1,1)        │   for z<0
+
+  ✓ Fast              ✓ Probabilities  ✓ Zero-centered        ✓ No dead neurons
+  ✗ Dead neurons      ✗ Vanishing grad ✗ Vanishing grad       ✗ Extra hyperparameter
+```
+
+---
+
+## V2. Forward Pass → Loss → Backpropagation
+
+### V2.1 Complete Forward + Loss Computation
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FORWARD PASS (left → right)                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Input x        Layer 1               Layer 2              Output & Loss
+  ┌─────┐     ┌──────────┐          ┌──────────┐          ┌─────────────────┐
+  │ x₁  │     │ z¹=W¹x+b¹│          │ z²=W²a¹+b│          │ ŷ = Softmax(z³) │
+  │ x₂  │────►│ a¹=ReLU  │─────────►│ a²=ReLU  │─────────►│                 │
+  │ x₃  │     │  (z¹)    │          │  (z²)    │          │ L = CrossEntropy │
+  └─────┘     └──────────┘          └──────────┘          │   (ŷ, y_true)   │
+                                                            └────────┬────────┘
+                                                                     │
+                                                                Loss = -log(ŷ_correct)
+```
+
+### V2.2 Backpropagation — Chain Rule Unrolled
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      BACKWARD PASS (right → left)                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  ∂L/∂W¹ ◄──── ∂L/∂a¹ ◄──── ∂L/∂z² ◄──── ∂L/∂a² ◄──── ∂L/∂z³ ◄──── ∂L/∂ŷ
+                │                │                │               │
+                │ × ∂a¹/∂z¹     │ × ∂z²/∂a¹     │ × ∂a²/∂z²    │× ∂ŷ/∂z³
+                │ (ReLU deriv)   │ (= W²)         │ (ReLU deriv) │(Softmax deriv)
+                ▼                ▼                ▼               ▼
+            δ¹ = δ² · W²ᵀ    δ² = δ³ · W³ᵀ   δ³ = ŷ - y_true
+              ⊙ ReLU'(z¹)      ⊙ ReLU'(z²)    ← elegant result!
+```
+
+**Chain Rule at each layer:**
+
+```
+  ∂L       ∂L      ∂aˡ     ∂zˡ
+ ───── = ───── · ───── · ─────
+  ∂Wˡ    ∂aˡ    ∂zˡ     ∂Wˡ
+
+         = δˡ  ·  f'(zˡ) · (aˡ⁻¹)ᵀ
+              ↑           ↑
+         gradient    previous layer's
+         from ahead  activation (input
+                     to this layer)
+```
+
+### V2.3 Backprop as a Computation Graph
+
+```mermaid
+graph LR
+    X["Input x"] --> Z1["z¹ = W¹x + b¹"]
+    W1["W¹"] --> Z1
+    B1["b¹"] --> Z1
+    Z1 --> A1["a¹ = ReLU(z¹)"]
+    A1 --> Z2["z² = W²a¹ + b²"]
+    W2["W²"] --> Z2
+    B2["b²"] --> Z2
+    Z2 --> A2["a² = ReLU(z²)"]
+    A2 --> LOSS["L = CrossEntropy(Softmax(z²), y)"]
+    Y["y_true"] --> LOSS
+
+    LOSS -->|"∂L/∂z² = ŷ - y"| dZ2["δ²"]
+    dZ2 -->|"δ¹ = W²ᵀδ² ⊙ ReLU'(z¹)"| dZ1["δ¹"]
+    dZ2 -->|"∂L/∂W² = δ²(a¹)ᵀ"| dW2["▽W²"]
+    dZ1 -->|"∂L/∂W¹ = δ¹xᵀ"| dW1["▽W¹"]
+
+    style LOSS fill:#ff6b6b,color:#fff
+    style dW1 fill:#51cf66,color:#fff
+    style dW2 fill:#51cf66,color:#fff
+```
+
+### V2.4 Vanishing & Exploding Gradients
+
+```
+  Deep network — gradient flow through L layers:
+  ┌──────────────────────────────────────────────────────┐
+  │ Layer L │ Layer L-1 │ Layer L-2 │ ... │ Layer 1      │
+  └──────────────────────────────────────────────────────┘
+       │          │           │                │
+      δᴸ    ×  W ×σ'    ×  W ×σ'    ×  ... × W ×σ'  = δ¹
+
+  If |W · σ'| < 1  (e.g. sigmoid σ' ≤ 0.25):
+    δ¹ ≈ (0.25)ᴸ × δᴸ  →  VANISHES  (gradients → 0)
+
+  If |W · σ'| > 1:
+    δ¹ ≈ (large)ᴸ × δᴸ  →  EXPLODES  (NaN)
+
+  Solutions:
+  ┌─────────────────┬────────────────────────────────────┐
+  │ Vanishing       │ ReLU activations, ResNets,         │
+  │                 │ BatchNorm, careful init (He/Xavier) │
+  ├─────────────────┼────────────────────────────────────┤
+  │ Exploding       │ Gradient clipping:                 │
+  │                 │ g ← g × (threshold / ‖g‖) if ‖g‖>t│
+  └─────────────────┴────────────────────────────────────┘
+```
+
+---
+
+## V3. Gradient Descent — Visual Intuition
+
+### V3.1 Loss Landscape (2D Slice)
+
+```
+  Loss
+    ↑
+  4 │  ╲                                           ╱
+    │   ╲         Local min                       ╱
+  3 │    ╲       ╱‾‾╲          Saddle            ╱
+    │     ╲     ╱    ╲        ╱‾‾‾‾╲            ╱
+  2 │      ╲   ╱      ╲      ╱      ╲           ╱
+    │       ╲_╱        ╲    ╱ Global ╲         ╱
+  1 │    local↑         ╲__╱   min   ╲_______╱
+    │    min                     ↑
+  0 └────────────────────────────────────────────► θ
+        θ₀   θ₁   θ₂   θ₃   θ₄   θ*
+
+  Gradient descent steps:
+  θ₀ → θ₁ → θ₂ → θ₃ (following -∇L at each point)
+```
+
+### V3.2 Learning Rate Effect
+
+```
+  Too small η                 Good η                   Too large η
+  ──────────────            ──────────────           ──────────────
+  Loss ↑                    Loss ↑                   Loss ↑
+       │ ●                       │ ●                      │ ●
+       │  ●                      │   ●                    │         ●
+       │   ●                     │     ●                  │   ●
+       │    ●                    │       ●                │       ●
+       │     ●●                  │         ●●             │   ●
+       │       ●●●               │              ●●●●●*    │       ●
+       │          ●●●●           │                        │   ●       ●
+       └────────────► steps      └──────────► steps       └────────────► steps
+       Converges slowly          Converges well           Diverges / oscillates
+```
+
+### V3.3 Batch vs SGD vs Mini-batch
+
+```
+  Full Batch GD              SGD                  Mini-Batch SGD
+  ─────────────            ────────               ──────────────
+  Loss ↑                   Loss ↑                 Loss ↑
+       │                        │ ╭─╮                  │
+       │   smooth                │╭╯ ╰╮╭╮               │  ╭╮  ╭╮
+       │  ╭──────                │╯    ╰╯╰╮              │ ╭╯╰──╯╰
+       │ ╭╯                      │        ╰╮             │╭╯
+       │╭╯                       │         ╰╮            │╯
+       ││                        │          ╰╮            │
+       └─────────► epoch         └──────────► iter       └──────────► iter
+       Stable, slow per step     Noisy, fast/step        Balance of both
+       Uses all n samples        Uses 1 sample           Uses batch B
+```
+
+### V3.4 Gradient Descent Algorithms — Trajectory Comparison
+
+```
+  Contour plot of a loss surface (elliptical — ill-conditioned):
+
+     ┌──────────────────────────────────────────┐
+     │  ╭──────────────────────────────────╮    │
+     │  │  ╭──────────────────────────╮    │    │
+     │  │  │  ╭──────────────────╮    │    │    │
+     │  │  │  │   ╭──────────╮   │    │    │    │
+     │  │  │  │   │    ★     │   │    │    │    │  ★ = minimum
+     │  │  │  │   ╰──────────╯   │    │    │    │
+     │  │  │  ╰──────────────────╯    │    │    │
+     │  │  ╰──────────────────────────╯    │    │
+     │  ╰──────────────────────────────────╯    │
+     └──────────────────────────────────────────┘
+
+  SGD path:       zig-zag wildly across contours  ←→←→←→★
+  Momentum path:  oscillates but builds up speed   →→→★
+  AdaGrad path:   adapts per dimension             ↘↘★  (slows over time)
+  Adam path:      smooth, direct to minimum        ↘★
+```
+
+---
+
+## V4. Normalization Techniques — Visual Guide
+
+### V4.1 What Gets Normalized — The Core Difference
+
+```
+  A mini-batch of shape [N=4 samples, C=3 channels, H=2, W=2]:
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │              Feature / Channel / Neuron dimension               │
+  │         C1              C2              C3                       │
+  │  ┌────────────┐  ┌────────────┐  ┌────────────┐               │
+  │N │ s1: [a,b]  │  │ s1: [m,n]  │  │ s1: [x,y]  │               │
+  │  │ s2: [c,d]  │  │ s2: [o,p]  │  │ s2: [z,w]  │               │
+  │  │ s3: [e,f]  │  │ s3: [q,r]  │  │ s3: [u,v]  │               │
+  │  │ s4: [g,h]  │  │ s4: [s,t]  │  │ s4: [i,j]  │               │
+  │  └────────────┘  └────────────┘  └────────────┘               │
+  │                                                                  │
+  │  Batch Norm:  normalize across N (all samples), per channel     │
+  │  ─────────── ════════════════════════════════════════           │
+  │               Each column (channel) normalized together          │
+  │                                                                  │
+  │  Layer Norm:  normalize across C,H,W (all features), per sample │
+  │  ─────────── ════════════════════════════════════════           │
+  │               Each row (sample) normalized independently         │
+  │                                                                  │
+  │  Instance Norm: normalize across H,W, per sample per channel    │
+  │  ───────────── ═══════════════════════════════════════          │
+  │               Each [H,W] block normalized independently          │
+  │                                                                  │
+  │  Group Norm: normalize across groups of channels, per sample    │
+  │  ────────── ════════════════════════════════════════            │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+### V4.2 Batch Normalization — Step by Step
+
+```
+  Input activations for a batch:  z = {z₁, z₂, ..., zₙ}
+
+  Step 1: Compute batch statistics
+  ─────────────────────────────────
+       1  N                        1   N
+  μ = ─── Σ zᵢ           σ² = ─── Σ (zᵢ - μ)²
+       N  i=1                   N  i=1
+
+  Step 2: Normalize
+  ──────────────────
+             zᵢ - μ
+  ẑᵢ = ─────────────────
+          √(σ² + ε)
+
+  Step 3: Scale and shift (learnable γ, β)
+  ──────────────────────────────────────────
+  yᵢ = γ · ẑᵢ + β   ← γ and β are learned via backprop
+
+  ┌────────────────────────────────────────────────────────┐
+  │  Before BN          After BN             After γ,β     │
+  │  ──────────         ──────────           ──────────     │
+  │  ●   ●●             ●  ● ●              ●   ●●         │
+  │     ●   ●  ──►   ●  ●  ● ●  ──►     ●  ●●  ●         │
+  │  ●  ●   ●          ●●  ●              ●  ●   ●         │
+  │  Spread varies      ~N(0,1)           ~N(β, γ²)        │
+  └────────────────────────────────────────────────────────┘
+
+  At inference: use running mean/variance (tracked during training)
+  μ_run = 0.9·μ_run + 0.1·μ_batch  (exponential moving average)
+```
+
+### V4.3 Layer Normalization (used in Transformers)
+
+```
+  For a single sample x = [x₁, x₂, ..., xₐ]:
+
+  μ = mean(x),   σ² = var(x)
+
+  LayerNorm(x) = γ ⊙ (x - μ)/√(σ² + ε) + β
+
+  WHY it works in Transformers:
+  ─────────────────────────────
+  Batch Norm needs consistent batch stats → fails with:
+    - Variable sequence lengths
+    - Small batch sizes
+    - Autoregressive generation (batch size = 1)
+
+  Layer Norm normalizes each token's feature vector independently:
+
+  Token 1: [0.1, 5.2, -3.1, 0.8]  → normalize this vector
+  Token 2: [2.1, 1.0,  0.5, 3.3]  → normalize this vector (separately)
+  Token 3: [...]                   → normalize independently
+```
+
+### V4.4 Normalization Comparison Chart
+
+```
+  ┌───────────────┬──────────┬────────────┬──────────┬────────────┐
+  │ Method        │ Batch N  │ Layer N    │ Instance │ Group N    │
+  ├───────────────┼──────────┼────────────┼──────────┼────────────┤
+  │ Normalizes    │ across N │ across C   │ across   │ across C/G │
+  │ over...       │ per C    │ per sample │ H,W      │ per sample │
+  ├───────────────┼──────────┼────────────┼──────────┼────────────┤
+  │ Works with    │ Large    │ Any size   │ Any size │ Any size   │
+  │ batch size    │ batch    │            │          │            │
+  ├───────────────┼──────────┼────────────┼──────────┼────────────┤
+  │ Best for      │ CNNs,    │Transformers│ Style    │ Object     │
+  │               │ ResNets  │ RNNs       │ transfer │ detection  │
+  ├───────────────┼──────────┼────────────┼──────────┼────────────┤
+  │ Learnable     │ γ, β     │ γ, β       │ γ, β     │ γ, β       │
+  │ params        │ per C    │ per feat   │ per C    │ per group  │
+  └───────────────┴──────────┴────────────┴──────────┴────────────┘
+```
+
+### V4.5 Effect of Normalization on Loss Landscape
+
+```
+  Without Batch Norm:          With Batch Norm:
+  ───────────────────          ────────────────
+  Loss ↑                       Loss ↑
+       │ ╭───╮                      │
+       │╭╯   ╰─╮  ← sharp           │   ╭────────╮
+       ││       ╰──╮  cliffs         │  ╭╯        ╰───╮
+       ││           ╰╮               │ ╭╯              ╰╮
+       ││             ╰╮             │╭╯                 ╰──
+       │╯               ╰────        │╯
+       └──────────────────► θ        └──────────────────► θ
+       Sensitive to LR               Smoother, allows large LR
+       Must use tiny learning rate   Converges faster
+```
+
+---
+
+## V5. Dropout — Removing Connections
+
+### V5.1 Regular Network vs Network with Dropout
+
+```
+  TRAINING (dropout active, p=0.5 = keep probability):
+
+  Full network:                    After dropout mask:
+
+    x₁ ─── h₁ ─── h₃              x₁ ─── h₁ ──── h₃
+       ╲  ╱  ╲  ╱                     ╲  ╱  ╲
+    x₂ ─── h₂ ─── h₄              x₂ ──── h₂    ╳ h₄ (dropped)
+       ╱  ╲  ╱  ╲                            ╲
+    x₃ ─── h₅ ─── h₆              x₃ ──── h₅ ──── h₆
+                                         ↑
+                                     h₃ dropped (×)
+                                     h₄ dropped (×)
+
+  Each neuron independently set to 0 with probability (1-p)
+  Surviving neurons scaled by 1/p to maintain expected activation
+
+  INFERENCE (no dropout):
+  ─────────────────────────
+  Use full network, weights already represent ensemble average
+```
+
+### V5.2 Dropout as Ensemble Learning
+
+```
+  With n neurons, dropout implicitly trains 2ⁿ sub-networks:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  Sub-network 1:   ● ─ ● ─ ●                             │
+  │  Sub-network 2:   ● ─ ×   ●    (h₂ dropped)            │
+  │  Sub-network 3:   × ─ ● ─ ●    (h₁ dropped)            │
+  │  Sub-network 4:   ● ─ ●   ×    (h₃ dropped)            │
+  │  ...              2ⁿ combinations ...                    │
+  │                                                          │
+  │  At inference: equivalent to geometric mean of all      │
+  │  sub-network predictions (weight sharing makes this     │
+  │  computationally free)                                   │
+  └─────────────────────────────────────────────────────────┘
+```
+
+### V5.3 Inverted Dropout (PyTorch implementation logic)
+
+```python
+# Training
+mask = (torch.rand(h.shape) < keep_prob)   # Bernoulli mask
+h = h * mask / keep_prob                   # Scale up survivors
+
+# Inference
+h = h  # No masking, no scaling needed (already compensated)
+
+# Why divide by keep_prob during training?
+# E[h_dropped] = keep_prob × h × (1/keep_prob) = h  ✓
+# Expected value preserved → same scale at inference
+```
+
+### V5.4 Dropout Placement & Effect on Loss
+
+```
+  Loss during training WITH dropout:
+  ↑
+  │  ●●●
+  │      ●●      ← noisier loss curve (different
+  │        ●●●       sub-network each step)
+  │           ●●
+  │             ●●●●
+  │                 ●●●●●●
+  └────────────────────────────► epoch
+       ↑
+       More variance, but final model generalizes better
+
+  Validation loss comparison:
+  ↑
+  │ Without dropout: ──── (train) ╲_____ gap = overfitting
+  │                  ─ ─ (val)   ╲
+  │ With dropout:    ──── (train) ╲___  gap reduced
+  │                  ─ ─ (val)      ╲──
+  └────────────────────────────────────► epoch
+```
+
+### V5.5 Other Regularization Variants
+
+```
+  DropConnect:  Drop individual weights (not neurons)
+  ─────────────
+  W = W ⊙ M,  M ~ Bernoulli(p)
+  Even more aggressive — randomly zero weight matrix entries
+
+  Spatial Dropout (for CNNs):
+  ──────────────────────────
+  Drop entire feature maps (channels), not individual pixels
+  Preserves spatial structure
+
+  ┌──────────────────────────────────────┐
+  │ Feature map 1: [retained]            │
+  │ Feature map 2: [DROPPED — all zeros] │
+  │ Feature map 3: [retained]            │
+  │ Feature map 4: [DROPPED — all zeros] │
+  └──────────────────────────────────────┘
+
+  DropBlock (for CNNs):
+  ─────────────────────
+  Drop contiguous blocks of spatial positions — more effective
+  than random pixel dropout for spatial feature maps
+```
+
+---
+
+## V6. Optimization Algorithms — Visual & Mathematical Deep Dive
+
+### V6.1 Optimizer Family Tree
+
+```mermaid
+graph TD
+    GD["Gradient Descent\n θ ← θ - η∇L"] --> SGD["SGD\n(stochastic)"]
+    GD --> BGD["Batch GD\n(full dataset)"]
+    SGD --> MOM["+ Momentum\n v ← μv - η∇L"]
+    MOM --> NAG["Nesterov (NAG)\n look-ahead gradient"]
+    SGD --> ADA["AdaGrad\n per-param LR"]
+    ADA --> RMSP["RMSprop\n exponential avg"]
+    RMSP --> ADAM["Adam\n 1st + 2nd moments"]
+    ADAM --> ADAMW["AdamW\n decoupled weight decay"]
+    ADAM --> AMSGRAD["AMSGrad\n max past variance"]
+    ADAM --> NADAM["NAdam\n Adam + Nesterov"]
+    GD --> NEWTON["Newton's Method\n H⁻¹∇L"]
+    NEWTON --> LBFGS["L-BFGS\n approx Hessian"]
+    NEWTON --> NATGRAD["Natural Gradient\n F⁻¹∇L"]
+
+    style ADAM fill:#4dabf7,color:#fff
+    style ADAMW fill:#339af0,color:#fff
+    style NATGRAD fill:#f06595,color:#fff
+```
+
+### V6.2 Momentum — Building Up Speed
+
+```
+  Without momentum:             With momentum (μ=0.9):
+  ─────────────────             ──────────────────────
+
+  step 1: θ -= η∇L₁            step 1: v = -η∇L₁;        θ += v
+  step 2: θ -= η∇L₂            step 2: v = 0.9v - η∇L₂;  θ += v
+  step 3: θ -= η∇L₃            step 3: v = 0.9v - η∇L₃;  θ += v
+
+  ↑L                             ↑L
+   │╲                             │╲
+   │ ╲   zig-zag                  │ ╲  smooth
+   │  ╲╱╲                         │  ╲╱───────
+   │     ╲╱╲                      │
+   └─────────────────► θ          └─────────────────► θ
+
+  Velocity accumulates in consistent directions → dampens oscillation
+  Effective learning rate: η / (1-μ)  e.g. μ=0.9 → 10× amplification
+```
+
+### V6.3 Adam Step-by-Step Example
+
+```
+  Initialization: m₀=0, v₀=0, t=0, η=0.001, β₁=0.9, β₂=0.999, ε=1e-8
+
+  ┌────┬──────────┬───────────────────────────────────────────────────────┐
+  │ t  │ g (grad) │ Computation                                           │
+  ├────┼──────────┼───────────────────────────────────────────────────────┤
+  │ 1  │ 0.5      │ m₁ = 0.9·0 + 0.1·0.5 = 0.05                        │
+  │    │          │ v₁ = 0.999·0 + 0.001·0.25 = 0.00025                 │
+  │    │          │ m̂₁ = 0.05/(1-0.9¹) = 0.5                            │
+  │    │          │ v̂₁ = 0.00025/(1-0.999¹) = 0.25                      │
+  │    │          │ Δθ = -0.001 · 0.5/√(0.25+1e-8) ≈ -0.001            │
+  ├────┼──────────┼───────────────────────────────────────────────────────┤
+  │ 2  │ 0.1      │ m₂ = 0.9·0.05 + 0.1·0.1 = 0.055                    │
+  │    │          │ v₂ = 0.999·0.00025 + 0.001·0.01 = 0.00025975        │
+  │    │          │ m̂₂ = 0.055/(1-0.81) ≈ 0.289                         │
+  │    │          │ Δθ ≈ -0.001 · 0.289/0.016 ≈ -0.0181                 │
+  │    │          │ ↑ larger step than grad suggests — momentum effect    │
+  └────┴──────────┴───────────────────────────────────────────────────────┘
+
+  Key intuitions:
+  m (1st moment) = exponential avg of gradients → direction
+  v (2nd moment) = exponential avg of grad² → per-param scale
+  Bias correction: important early in training when m,v ≈ 0
+```
+
+### V6.4 AdaGrad vs RMSprop vs Adam — The Core Difference
+
+```
+  Imagine parameter θ₁ (frequent, large grads) vs θ₂ (rare, small grads):
+
+  AdaGrad (accumulates all grads²):
+  ────────────────────────────────
+    G₁ grows without bound → LR₁ → 0  (bad for non-convex)
+    G₂ stays small → LR₂ stays healthy
+
+  RMSprop (exponential moving average):
+  ─────────────────────────────────────
+    v₁ = 0.9·v₁ + 0.1·g₁²  → recent grads matter more
+    Forgets old large gradients → LR doesn't vanish
+    ✓ Better for non-convex / online settings
+
+  Adam (momentum + RMSprop):
+  ──────────────────────────
+    Has both direction memory (m) and curvature estimate (v)
+    Best of all worlds → most widely used default
+
+  ┌──────────────┬────────────┬────────────┬───────────────┐
+  │ Optimizer    │ Memory     │ LR Decay?  │ Best for      │
+  ├──────────────┼────────────┼────────────┼───────────────┤
+  │ SGD          │ none       │ no         │ CNNs (w/ tune)│
+  │ Momentum     │ velocity   │ no         │ convex        │
+  │ AdaGrad      │ sum g²     │ yes→0      │ sparse feats  │
+  │ RMSprop      │ EMA g²     │ no         │ RNNs          │
+  │ Adam         │ EMA g, g²  │ no         │ most tasks    │
+  │ AdamW        │ EMA g, g²  │ via WD     │ transformers  │
+  └──────────────┴────────────┴────────────┴───────────────┘
+```
+
+### V6.5 Learning Rate Schedule Visualization
+
+```
+  Loss ↑  (y-axis: LR value, x-axis: training step)
+
+  Step Decay:              Cosine Annealing:         Warmup + Decay:
+  ─────────────            ─────────────────         ───────────────
+  LR ↑                     LR ↑                      LR ↑
+     │ ────                    │╲                        │   ╲
+     │     ────                │  ╲     ╭╲               │  ╱  ╲
+     │         ────            │   ╰╮  ╭╯ ╲              │ ╱    ╰─────
+     │              ─          │    ╰──╯   ╰╮            │╱
+     └──────────────► step     └────────────► step       └────────────► step
+     Discrete drops            Smooth decay +            Linear warmup
+     γ=0.1 every s steps       warm restarts             then t^(-0.5) decay
+                                                          (Transformer schedule)
+
+  One Cycle Policy:
+  ─────────────────
+  LR ↑
+     │      ╭──╮
+     │     ╭╯  ╰╮
+     │    ╭╯    ╰╮
+     │   ╭╯      ╰──────
+     │──╭╯
+     └────────────────────► step
+     Warmup then anneal in 1 cycle
+     Momentum: inverse shape (high→low→high)
+```
+
+### V6.6 Newton's Method vs Gradient Descent
+
+```
+  Gradient descent:                 Newton's method:
+  ─────────────────                 ────────────────
+  Uses slope only (1st order)       Uses slope + curvature (2nd order)
+
+  Loss ↑                            Loss ↑
+       │     ╭────╮                      │     ╭────╮
+       │    ╭╯    ╰╮                     │    ╭╯    ╰╮
+       │   ╭╯      ╰╮                    │   ╭╯      ╰╮
+       │ ●→●→●→●→● ╰╮                   │ ●→● ╰╮
+       │              ╰╮                 │        ★ (2 steps!)
+       └────────────────► θ              └────────────────► θ
+
+  Many small steps following slope     Jump directly to minimum
+  O(1/t) convergence                   Quadratic convergence
+  O(d) cost per step                   O(d³) cost (Hessian inversion)
+
+  L-BFGS: approximate Hessian using m recent (s,y) pairs:
+  ─────────────────────────────────────────────────────────
+  sₖ = θₖ₊₁ - θₖ  (parameter change)
+  yₖ = ∇Lₖ₊₁ - ∇Lₖ (gradient change)
+  H⁻¹ approximated with two-loop recursion — O(md) per step
+```
+
+### V6.7 Gradient Clipping
+
+```
+  Problem: exploding gradients in RNNs / deep nets
+
+  ┌───────────────────────────────────────────────────────┐
+  │                                                       │
+  │  ‖g‖ = 1000  (exploding!)    threshold T = 5         │
+  │                                                       │
+  │  Value clipping:   g ← clip(g, -5, 5)  per element  │
+  │                    Distorts direction! ✗              │
+  │                                                       │
+  │  Norm clipping:    if ‖g‖ > T:                       │
+  │                         g ← g × T/‖g‖                │
+  │                    Preserves direction ✓              │
+  │                    ‖g_new‖ = 5, direction unchanged   │
+  │                                                       │
+  │  Before clipping:  g = [800, 600]  ‖g‖ = 1000        │
+  │  After clipping:   g = [4.0, 3.0]  ‖g‖ = 5.0        │
+  │                        ↑same direction, safe scale    │
+  └───────────────────────────────────────────────────────┘
+```
+
+### V6.8 Second-Order Methods: Natural Gradient
+
+```
+  Standard gradient descent ignores the geometry of parameter space.
+  Natural gradient uses the Fisher Information Matrix F:
+
+  θ ← θ - F(θ)⁻¹ ∇L(θ)
+
+  Why does geometry matter?
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  Parameter space             Distribution space          │
+  │                                                          │
+  │  θ₁ ────────── θ₂           p(·;θ₁) ──── p(·;θ₂)     │
+  │  (equal Δθ)                  (very different dists!)    │
+  │                                                          │
+  │  A step in θ-space may cause a huge or tiny change      │
+  │  in the model's output distribution.                     │
+  │                                                          │
+  │  Natural gradient steps equal amounts in distribution   │
+  │  space (measured by KL divergence), not parameter space │
+  └─────────────────────────────────────────────────────────┘
+
+  F(θ) = E[∇log p(x;θ) ∇log p(x;θ)ᵀ]  ← Fisher information matrix
+
+  K-FAC approximation: F ≈ A ⊗ B  (Kronecker product)
+  → reduces O(d⁴) to O(d²)  — used in large-scale training
+```
+
+---
+
+## V7. Putting It All Together — Training Pipeline
+
+```mermaid
+flowchart TD
+    DATA["Raw Data\n(x, y pairs)"] --> PREP["Preprocessing\nNormalize, Augment"]
+    PREP --> BATCH["Mini-batch Sampler\nB = 32–256 samples"]
+    BATCH --> FWD["Forward Pass\nz = Wx+b, a = f(z)"]
+    FWD --> NORM["Normalization\nBatchNorm / LayerNorm"]
+    NORM --> DROP["Dropout\n(training only, p=0.5)"]
+    DROP --> LOSS["Loss Computation\nL = CrossEntropy(ŷ, y)"]
+    LOSS --> BWD["Backpropagation\nCompute ∂L/∂W for all layers"]
+    BWD --> CLIP["Gradient Clipping\n‖g‖ > T → g × T/‖g‖"]
+    CLIP --> OPT["Optimizer Step\nAdam: θ ← θ - η·m̂/√v̂"]
+    OPT --> SCHED["LR Scheduler\nCosine / Warmup-Decay"]
+    SCHED --> CHECK{"Converged?\nval_loss plateau"}
+    CHECK -->|No| BATCH
+    CHECK -->|Yes| EVAL["Evaluation\nTest set, metrics"]
+    EVAL --> DEPLOY["Deployment\nInference mode:\nno dropout, BN uses running stats"]
+
+    style LOSS fill:#ff6b6b,color:#fff
+    style BWD fill:#ffa94d,color:#fff
+    style OPT fill:#51cf66,color:#fff
+    style DEPLOY fill:#339af0,color:#fff
+```
+
+### V7.1 Hyperparameter Sensitivity Guide
+
+```
+  ┌─────────────────┬───────────────┬────────────────────────────────┐
+  │ Hyperparameter  │ Default       │ Effect if too high / too low   │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ Learning rate η │ 1e-3 (Adam)   │ High: diverge / Low: slow      │
+  │                 │ 1e-2 (SGD)    │                                │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ Batch size B    │ 32–256        │ High: sharp minima, fast/epoch │
+  │                 │               │ Low: noisy, slow/epoch         │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ Dropout p       │ 0.5 (FC)      │ High: underfitting             │
+  │                 │ 0.1–0.2 (CNN) │ Low: overfitting               │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ Weight decay λ  │ 1e-4 to 1e-2  │ High: underfitting             │
+  │                 │               │ Low: overfitting               │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ Momentum μ      │ 0.9           │ High: overshoots               │
+  │                 │               │ Low: slow, oscillates          │
+  ├─────────────────┼───────────────┼────────────────────────────────┤
+  │ β₁ (Adam)       │ 0.9           │ Gradient momentum              │
+  │ β₂ (Adam)       │ 0.999         │ Gradient² smoothing            │
+  │ ε  (Adam)       │ 1e-8          │ Numerical stability            │
+  └─────────────────┴───────────────┴────────────────────────────────┘
+```
+
+---
+
+*End of Visual Guide. All diagrams are designed to render in GitHub Markdown. Mermaid diagrams require a Mermaid-enabled viewer (GitHub natively supports them).*
