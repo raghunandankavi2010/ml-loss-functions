@@ -38,7 +38,7 @@ A confusion matrix is a table that summarises every possible outcome of a binary
                   Positive     Negative
 ```
 
-### 1.2 The Four Cells — Plain English
+### 1.2 The Four Cells
 
 | Cell | Name | Meaning | Memory Hook |
 |------|------|---------|-------------|
